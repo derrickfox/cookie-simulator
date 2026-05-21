@@ -12,7 +12,7 @@ import React, { Suspense, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { RotateCcw, Thermometer, Timer, Wheat, Droplets, Cookie, Milk, Sparkles, Flame } from 'lucide-react';
+import { RotateCcw, RotateCw, Thermometer, Timer, Wheat, Droplets, Cookie, Milk, Sparkles, Flame } from 'lucide-react';
 import * as THREE from 'three';
 import './styles.css';
 import { DEFAULT_RECIPE, MAX_CHIPS, evaluateCookie } from './cookieScienceModel.js';
@@ -80,6 +80,122 @@ function smooth(t) {
 function hash1(n) {
   const s = Math.sin(n * 127.1) * 43758.5453123;
   return s - Math.floor(s);
+}
+
+// AI_CHANGE:
+// Tool: Cursor
+// Model: Composer
+// Timestamp: 2026-05-21T18:45:00-04:00
+// Purpose: Builds procedural picnic-check and wood textures for the serving table scene.
+// Reason: The cookie previously floated in empty space; a tablecloth and wood table
+//   ground the model in a recognizable picnic setting without external image assets.
+function createPicnicClothTexture() {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const squares = 10;
+  const sq = size / squares;
+
+  for (let row = 0; row < squares; row += 1) {
+    for (let col = 0; col < squares; col += 1) {
+      const even = (row + col) % 2 === 0;
+      ctx.fillStyle = even ? '#fff8f2' : '#c62828';
+      ctx.fillRect(col * sq, row * sq, sq + 1, sq + 1);
+    }
+  }
+
+  const image = ctx.getImageData(0, 0, size, size);
+  for (let i = 0; i < image.data.length; i += 4) {
+    const n = hash1(i * 0.017) * 14 - 7;
+    image.data[i] = clamp(image.data[i] + n, 0, 255);
+    image.data[i + 1] = clamp(image.data[i + 1] + n * 0.8, 0, 255);
+    image.data[i + 2] = clamp(image.data[i + 2] + n * 0.6, 0, 255);
+  }
+  ctx.putImageData(image, 0, 0);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(3.5, 3.5);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createWoodTexture() {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#8f5a2d';
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 42; i += 1) {
+    const y = hash1(i * 2.7) * size;
+    const w = 2 + hash1(i + 4) * 5;
+    ctx.fillStyle = `rgba(${Math.round(70 + hash1(i + 8) * 40)}, ${Math.round(38 + hash1(i + 12) * 24)}, ${Math.round(16 + hash1(i + 16) * 18)}, 0.18)`;
+    ctx.fillRect(0, y, size, w);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(2, 2);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// AI_CHANGE:
+// Tool: Cursor
+// Model: Composer
+// Timestamp: 2026-05-21T18:45:00-04:00
+// Purpose: Renders a picnic table with checkered cloth, wood top, and ceramic plate.
+// Reason: Gives the cookie a believable resting surface so the scene reads as a plated
+//   dessert on a picnic table instead of a model suspended in a void.
+function PicnicTableSetting() {
+  const clothTexture = useMemo(() => createPicnicClothTexture(), []);
+  const woodTexture = useMemo(() => createWoodTexture(), []);
+
+  return (
+    <group>
+      <mesh position={[0, -0.18, 0]} receiveShadow>
+        <boxGeometry args={[13.5, 0.22, 13.5]} />
+        <meshStandardMaterial map={woodTexture} color={'#9a6435'} roughness={0.82} metalness={0} />
+      </mesh>
+
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.046, 0]} receiveShadow>
+        <planeGeometry args={[13.2, 13.2, 1, 1]} />
+        <meshStandardMaterial map={clothTexture} roughness={0.92} metalness={0} />
+      </mesh>
+
+      {[
+        [-5.4, -0.34, -5.4],
+        [5.4, -0.34, -5.4],
+        [-5.4, -0.34, 5.4],
+        [5.4, -0.34, 5.4],
+      ].map(([x, y, z]) => (
+        <mesh key={`${x}-${z}`} position={[x, y, z]} castShadow receiveShadow>
+          <boxGeometry args={[0.34, 1.05, 0.34]} />
+          <meshStandardMaterial map={woodTexture} color={'#7a4d28'} roughness={0.88} metalness={0} />
+        </mesh>
+      ))}
+
+      <group position={[0, -0.015, 0]}>
+        <mesh receiveShadow castShadow>
+          <cylinderGeometry args={[3.35, 3.45, 0.07, 72]} />
+          <meshStandardMaterial color={'#f3eee6'} roughness={0.34} metalness={0.04} />
+        </mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.045, 0]} castShadow receiveShadow>
+          <torusGeometry args={[3.18, 0.075, 16, 96]} />
+          <meshStandardMaterial color={'#ebe4da'} roughness={0.3} metalness={0.05} />
+        </mesh>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0]} receiveShadow>
+          <circleGeometry args={[3.12, 72]} />
+          <meshStandardMaterial color={'#faf7f2'} roughness={0.28} metalness={0.03} />
+        </mesh>
+      </group>
+    </group>
+  );
 }
 
 function topSurfaceY(u) {
@@ -567,10 +683,17 @@ function CookieMesh({ target }) {
   );
 }
 
-function Scene({ target }) {
+// AI_CHANGE:
+// Tool: Cursor
+// Model: Composer
+// Timestamp: 2026-05-21T18:30:00-04:00
+// Purpose: Adds a stage toggle that enables or disables OrbitControls auto-rotation.
+// Reason: The cookie looked like it was floating and spinning in mid-air; users need a
+//   quick way to stop rotation while we refine the scene presentation.
+function Scene({ target, autoRotate }) {
   return (
     <Canvas
-      camera={{ position: [0, 7, 8.5], fov: 38 }}
+      camera={{ position: [0, 5.8, 7.8], fov: 42 }}
       shadows
       dpr={[1, 2]}
       // AI_CHANGE:
@@ -582,42 +705,43 @@ function Scene({ target }) {
       //   a grey overlay on top of the cookie instead of empty scene space.
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
     >
-      <color attach="background" args={['#e6cfad']} />
+      <color attach="background" args={['#d9c7a8']} />
 
       {/* Dimmed overall — too much total light intensity was pushing the cookie's
           warm colors through ACES into pale tan, which read as a grey overlay
           across the whole top of the cookie. */}
-      <ambientLight intensity={0.32} color={'#fff2dc'} />
+      <ambientLight intensity={0.34} color={'#fff2dc'} />
       <directionalLight
         position={[2, 10, 3]}
-        intensity={1.0}
+        intensity={1.05}
         color={'#fff0cf'}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
         shadow-bias={-0.0004}
-        shadow-camera-left={-5}
-        shadow-camera-right={5}
-        shadow-camera-top={5}
-        shadow-camera-bottom={-5}
+        shadow-camera-left={-8}
+        shadow-camera-right={8}
+        shadow-camera-top={8}
+        shadow-camera-bottom={-8}
         shadow-camera-near={0.5}
-        shadow-camera-far={25}
+        shadow-camera-far={30}
       />
-      <directionalLight position={[-3, 0.5, 4]} intensity={0.18} color={'#ffd28a'} />
-      <directionalLight position={[-1, 4, -6]} intensity={0.14} color={'#e0d4c4'} />
+      <directionalLight position={[-3, 0.5, 4]} intensity={0.2} color={'#ffd28a'} />
+      <directionalLight position={[-1, 4, -6]} intensity={0.16} color={'#e0d4c4'} />
 
       <Suspense fallback={null}>
+        <PicnicTableSetting />
         <CookieMesh target={target} />
       </Suspense>
 
       <OrbitControls
         enablePan={false}
-        minDistance={5.5}
-        maxDistance={14}
-        minPolarAngle={0.35}
-        maxPolarAngle={1.32}
-        target={[0, 0.35, 0]}
-        autoRotate
+        minDistance={6}
+        maxDistance={15}
+        minPolarAngle={0.42}
+        maxPolarAngle={1.28}
+        target={[0, 0.28, 0]}
+        autoRotate={autoRotate}
         autoRotateSpeed={0.25}
       />
     </Canvas>
@@ -649,8 +773,29 @@ function Slider({ control, value, onChange }) {
   );
 }
 
+function RotationToggle({ enabled, onChange }) {
+  return (
+    <label className="rotation-toggle">
+      <span className="rotation-toggle-label">
+        <RotateCw size={16} aria-hidden="true" />
+        Auto rotate
+      </span>
+      <input
+        type="checkbox"
+        checked={enabled}
+        onChange={(event) => onChange(event.target.checked)}
+        aria-label="Toggle cookie rotation"
+      />
+      <span className="rotation-toggle-track" aria-hidden="true">
+        <span className="rotation-toggle-thumb" />
+      </span>
+    </label>
+  );
+}
+
 function App() {
   const [recipe, setRecipe] = useState(defaults);
+  const [autoRotate, setAutoRotate] = useState(true);
   const target = useMemo(() => evaluateCookie(recipe), [recipe]);
 
   const setParam = (key, value) => setRecipe((current) => ({ ...current, [key]: value }));
@@ -691,7 +836,10 @@ function App() {
         </div>
       </aside>
       <section className="stage">
-        <Scene target={target} />
+        <Scene target={target} autoRotate={autoRotate} />
+        <div className="stage-controls">
+          <RotationToggle enabled={autoRotate} onChange={setAutoRotate} />
+        </div>
         <div className="readout" aria-live="polite">
           <span>Diameter {target.diameterIn.toFixed(1)} in</span>
           <span>Height {target.heightIn.toFixed(2)} in</span>

@@ -179,6 +179,76 @@ input[type='range'] {
   overflow: hidden;
 }
 
+.stage-controls {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 2;
+}
+
+.rotation-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(95, 60, 36, 0.24);
+  border-radius: 999px;
+  color: #3c2618;
+  background: rgba(255, 250, 241, 0.88);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  user-select: none;
+}
+
+.rotation-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.84rem;
+  font-weight: 760;
+}
+
+.rotation-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.rotation-toggle-track {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: #d2bda4;
+  transition: background 0.2s ease;
+}
+
+.rotation-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fffaf1;
+  box-shadow: 0 1px 3px rgba(36, 24, 18, 0.18);
+  transition: transform 0.2s ease;
+}
+
+.rotation-toggle input:checked + .rotation-toggle-track {
+  background: #b86a2c;
+}
+
+.rotation-toggle input:checked + .rotation-toggle-track .rotation-toggle-thumb {
+  transform: translateX(18px);
+}
+
+.rotation-toggle input:focus-visible + .rotation-toggle-track {
+  outline: 2px solid #b86a2c;
+  outline-offset: 2px;
+}
+
 .readout {
   position: absolute;
   right: 22px;
