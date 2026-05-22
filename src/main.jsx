@@ -8,7 +8,7 @@
 // Reason: The previous version used a coarse cylinder with stick-like "cracks" and dodecahedron
 //   chips, and the bake model produced subtle visual changes that the user couldn't see.
 
-import React, { Suspense, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -85,10 +85,10 @@ function hash1(n) {
 // AI_CHANGE:
 // Tool: Cursor
 // Model: Composer
-// Timestamp: 2026-05-21T18:45:00-04:00
+// Timestamp: 2026-05-21T20:25:00-04:00
 // Purpose: Builds procedural picnic-check and wood textures for the serving table scene.
-// Reason: The cookie previously floated in empty space; a tablecloth and wood table
-//   ground the model in a recognizable picnic setting without external image assets.
+// Reason: Restores the open picnic-table setting after the enclosed kitchen blocked camera
+//   movement at several orbit angles.
 function createPicnicClothTexture() {
   const size = 512;
   const canvas = document.createElement('canvas');
@@ -148,10 +148,10 @@ function createWoodTexture() {
 // AI_CHANGE:
 // Tool: Cursor
 // Model: Composer
-// Timestamp: 2026-05-21T18:45:00-04:00
+// Timestamp: 2026-05-21T20:25:00-04:00
 // Purpose: Renders a picnic table with checkered cloth, wood top, and ceramic plate.
-// Reason: Gives the cookie a believable resting surface so the scene reads as a plated
-//   dessert on a picnic table instead of a model suspended in a void.
+// Reason: Keeps the cookie grounded on an open set so users can orbit freely without walls
+//   or cabinets clipping the camera view.
 function PicnicTableSetting() {
   const clothTexture = useMemo(() => createPicnicClothTexture(), []);
   const woodTexture = useMemo(() => createWoodTexture(), []);
@@ -567,7 +567,23 @@ function buildChipBases() {
 }
 
 // One animated mesh + instanced chips. Each frame eases the visible state toward `target`.
-function CookieMesh({ target }) {
+// AI_CHANGE:
+// Tool: Cursor
+// Model: Composer
+// Timestamp: 2026-05-21T19:10:00-04:00
+// Purpose: Drives cookie-only levitation, spin, and gravity fall when auto-rotate toggles.
+// Reason: The scene should stay still on the picnic table while only the cookie performs
+//   a magical lift-and-spin act and then lands back on the plate with believable bounce.
+const COOKIE_REST_Y = 0;
+const LEVITATE_HEIGHT = 0.52;
+const SPIN_RATE = 0.11;
+const GRAVITY = 14.5;
+const BOUNCE = 0.38;
+const BOUNCE_FRICTION = 0.72;
+
+function CookieMesh({ target, autoRotate }) {
+  const motionRef = useRef();
+  const squashRef = useRef();
   const groupRef = useRef();
   const matRef = useRef();
   const chipsRef = useRef();
@@ -581,12 +597,107 @@ function CookieMesh({ target }) {
     chipBases.map(() => ({ scale: 0 })),
   );
 
+  const anim = useRef({
+    mode: autoRotate ? 'levitate' : 'rest',
+    y: 0,
+    vy: 0,
+    ry: 0,
+    ryVel: 0,
+    levitateT: 0,
+    squash: 1,
+    bobPhase: 0,
+    tiltX: 0,
+    tiltZ: 0,
+  });
+
+  useEffect(() => {
+    const state = anim.current;
+    if (autoRotate) {
+      if (state.mode === 'rest' || state.mode === 'fall') {
+        state.mode = 'levitate';
+        state.levitateT = 0;
+        state.vy = 0;
+      }
+      return;
+    }
+
+    if (state.mode === 'levitate' || state.mode === 'spin') {
+      state.mode = 'fall';
+      state.vy = 0;
+      state.ryVel = SPIN_RATE * 0.55;
+    }
+  }, [autoRotate]);
+
   const targetColor = useMemo(() => bakeColor(target.bake, target.burn), [target.bake, target.burn]);
 
   useFrame((_, dtRaw) => {
     // Clamp dt so big tab-switch pauses don't snap things.
     const dt = Math.min(0.05, dtRaw);
     const k = 1 - Math.exp(-dt * 7);
+    const a = anim.current;
+    const motion = motionRef.current;
+    const squash = squashRef.current;
+
+    if (motion) {
+      if (a.mode === 'levitate') {
+        a.levitateT = Math.min(1, a.levitateT + dt / 0.9);
+        const ease = 1 - Math.pow(1 - a.levitateT, 3);
+        a.y = lerp(COOKIE_REST_Y, LEVITATE_HEIGHT, ease);
+        a.tiltX = Math.sin(a.levitateT * Math.PI * 4) * 0.045 * (1 - a.levitateT);
+        a.tiltZ = Math.sin(a.levitateT * Math.PI * 3 + 0.6) * 0.035 * (1 - a.levitateT);
+        if (a.levitateT >= 1) {
+          a.mode = 'spin';
+          a.bobPhase = 0;
+          a.tiltX = 0;
+          a.tiltZ = 0;
+        }
+      } else if (a.mode === 'spin') {
+        a.bobPhase += dt * 2.2;
+        a.y = LEVITATE_HEIGHT + Math.sin(a.bobPhase) * 0.035;
+        a.ry += SPIN_RATE * dt;
+        a.tiltX = 0;
+        a.tiltZ = 0;
+      } else if (a.mode === 'fall') {
+        a.vy -= GRAVITY * dt;
+        a.y += a.vy * dt;
+        a.ry += a.ryVel * dt;
+        a.ryVel *= Math.exp(-dt * 2.4);
+        const fallTilt = clamp(-a.vy / 3.2, 0, 1);
+        a.tiltX = Math.sin(a.ry * 2.1) * 0.07 * fallTilt;
+        a.tiltZ = Math.cos(a.ry * 1.7) * 0.055 * fallTilt;
+
+        if (a.y <= COOKIE_REST_Y) {
+          a.y = COOKIE_REST_Y;
+          if (Math.abs(a.vy) > 0.35) {
+            a.vy = -a.vy * BOUNCE;
+            a.ryVel *= BOUNCE_FRICTION;
+            a.squash = 0.78;
+          } else {
+            a.vy = 0;
+            a.ryVel = 0;
+            a.mode = 'rest';
+            a.tiltX = 0;
+            a.tiltZ = 0;
+          }
+        }
+      } else {
+        a.y = COOKIE_REST_Y;
+        a.ryVel = 0;
+        a.tiltX = lerp(a.tiltX, 0, 1 - Math.exp(-dt * 10));
+        a.tiltZ = lerp(a.tiltZ, 0, 1 - Math.exp(-dt * 10));
+      }
+
+      a.squash = lerp(a.squash, 1, 1 - Math.exp(-dt * 9));
+      motion.position.y = a.y;
+      motion.rotation.y = a.ry;
+      motion.rotation.x = a.tiltX;
+      motion.rotation.z = a.tiltZ;
+
+      if (squash) {
+        const spread = 1 + (1 - a.squash) * 0.08;
+        squash.scale.set(spread, a.squash, spread);
+      }
+    }
 
     const g = groupRef.current;
     if (g) {
@@ -658,27 +769,29 @@ function CookieMesh({ target }) {
   }, []);
 
   return (
-    <group>
-      <group ref={groupRef}>
-        <mesh geometry={geometry} castShadow receiveShadow>
-          {/* Pure dielectric, fairly rough — that's how baked dough should read.
-              metalness > 0 was tinting the cookie with cool light reflections from
-              the rim light, washing the warm browns into grey. */}
-          <meshStandardMaterial
-            ref={matRef}
-            vertexColors
-            color={'#d28a45'}
-            roughness={0.78}
-            metalness={0}
-          />
-        </mesh>
+    <group ref={motionRef}>
+      <group ref={squashRef}>
+        <group ref={groupRef}>
+          <mesh geometry={geometry} castShadow receiveShadow>
+            {/* Pure dielectric, fairly rough — that's how baked dough should read.
+                metalness > 0 was tinting the cookie with cool light reflections from
+                the rim light, washing the warm browns into grey. */}
+            <meshStandardMaterial
+              ref={matRef}
+              vertexColors
+              color={'#d28a45'}
+              roughness={0.78}
+              metalness={0}
+            />
+          </mesh>
+        </group>
+        {/* Chips don't cast shadows: with many of them clustered, the cumulative shadow
+            blanket darkens the visible cookie surface into a brown void. They still
+            receive shadows so the cookie's silhouette reads against them. */}
+        <instancedMesh ref={chipsRef} args={[chipGeometry, undefined, MAX_CHIPS]} receiveShadow>
+          <meshStandardMaterial color={'#3a1a08'} roughness={0.55} metalness={0} />
+        </instancedMesh>
       </group>
-      {/* Chips don't cast shadows: with many of them clustered, the cumulative shadow
-          blanket darkens the visible cookie surface into a brown void. They still
-          receive shadows so the cookie's silhouette reads against them. */}
-      <instancedMesh ref={chipsRef} args={[chipGeometry, undefined, MAX_CHIPS]} receiveShadow>
-        <meshStandardMaterial color={'#3a1a08'} roughness={0.55} metalness={0} />
-      </instancedMesh>
     </group>
   );
 }
@@ -686,30 +799,19 @@ function CookieMesh({ target }) {
 // AI_CHANGE:
 // Tool: Cursor
 // Model: Composer
-// Timestamp: 2026-05-21T18:30:00-04:00
-// Purpose: Adds a stage toggle that enables or disables OrbitControls auto-rotation.
-// Reason: The cookie looked like it was floating and spinning in mid-air; users need a
-//   quick way to stop rotation while we refine the scene presentation.
+// Timestamp: 2026-05-21T20:25:00-04:00
+// Purpose: Hosts the open picnic-table set and cookie animation with an unobstructed camera rig.
+// Reason: Reverts the enclosed kitchen so orbit and pan stay clear at side-on viewing angles.
 function Scene({ target, autoRotate }) {
   return (
     <Canvas
-      camera={{ position: [0, 5.8, 7.8], fov: 42 }}
+      camera={{ position: [0, 5.8, 7.8], fov: 42, far: 100 }}
       shadows
       dpr={[1, 2]}
-      // AI_CHANGE:
-      // Tool: Codex
-      // Model: GPT-5
-      // Timestamp: 2026-05-21T16:25:47-04:00
-      // Purpose: Pulls the camera back and uses a distinct warm baking-sheet background.
-      // Reason: The previous tight crop made the hollow underside/background look like
-      //   a grey overlay on top of the cookie instead of empty scene space.
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
     >
       <color attach="background" args={['#d9c7a8']} />
 
-      {/* Dimmed overall — too much total light intensity was pushing the cookie's
-          warm colors through ACES into pale tan, which read as a grey overlay
-          across the whole top of the cookie. */}
       <ambientLight intensity={0.34} color={'#fff2dc'} />
       <directionalLight
         position={[2, 10, 3]}
@@ -731,18 +833,21 @@ function Scene({ target, autoRotate }) {
 
       <Suspense fallback={null}>
         <PicnicTableSetting />
-        <CookieMesh target={target} />
+        <CookieMesh target={target} autoRotate={autoRotate} />
       </Suspense>
 
+      {/* AI_CHANGE:
+          Tool: Cursor | Model: Composer | Timestamp: 2026-05-21T19:45:00-04:00
+          Purpose: Allows horizon-level orbit and table-plane pan for accurate height checks.
+          Reason: Users need a side-on view parallel to the picnic table to compare cookie height. */}
       <OrbitControls
-        enablePan={false}
-        minDistance={6}
-        maxDistance={15}
-        minPolarAngle={0.42}
-        maxPolarAngle={1.28}
+        enablePan
+        screenSpacePanning={false}
+        minDistance={5}
+        maxDistance={16}
+        minPolarAngle={0.35}
+        maxPolarAngle={Math.PI / 2 - 0.04}
         target={[0, 0.28, 0]}
-        autoRotate={autoRotate}
-        autoRotateSpeed={0.25}
       />
     </Canvas>
   );
